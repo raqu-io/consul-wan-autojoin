@@ -1,5 +1,5 @@
 ---
-packageName: vault-auto-init
+packageName: consul-wan-autojoin
 branches:
   - main
 plugins:
