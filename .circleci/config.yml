@@ -1,0 +1,40 @@
+version: 2.1
+orbs:
+  semantic-release: proxyco/semantic-release@3.0.0
+jobs:
+  build:
+    working_directory: ~/project
+    docker:
+      - image: circleci/golang:1.15.3
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - go-mod-v4-{{ checksum "go.sum" }}
+      - run:
+          name: Get dependencies
+          command: go get
+      - save_cache:
+          key: go-mod-v4-{{ checksum "go.sum" }}
+          paths:
+            - "/go/pkg/mod"
+      - run:
+          name: Build binary
+          command: CGO_ENABLE=0 GOOS=linux go build -o consul-wan-autojoin -v .
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
+workflows:
+  build_and_tag:
+    jobs:
+      - build
+      - semantic-release/release:
+          requires:
+            - build
+          context: global-vars
+          filters:
+            branches:
+              only: /main/
+          config_file: .circleci/.releaserc.yml
+          attach_project: true
