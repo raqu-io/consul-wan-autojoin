@@ -51,7 +51,7 @@ func main() {
 	}
 
 	if clusterTagKey == "" || clusterTagValue == "" {
-		log.Println("env vars were empty or not present, so we can not look for other consul clusters to join. Stopping")
+		log.Println("OPERATIONS_CONSUL_CLUSTER_TAG_KEY and/or OPERATIONS_CONSUL_CLUSTER_TAG_VALUE environment vars were empty or not present, this agent is not configured to autojoin any other cluster")
 		os.Exit(0)
 	}
 
