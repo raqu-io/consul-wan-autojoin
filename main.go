@@ -17,6 +17,7 @@ import (
 	"time"
 )
 var (
+	clusterRegion string
 	clusterTagKey string
 	clusterTagValue string
 	retryInterval string
@@ -33,6 +34,7 @@ func getEnv(key, fallback string) string {
 
 func main() {
 	log.Println("Starting consul-wan-autojoin service...")
+	clusterRegion = getEnv("OPERATIONS_CONSUL_CLUSTER_REGION", "")
 	clusterTagKey = getEnv("OPERATIONS_CONSUL_CLUSTER_TAG_KEY", "")
 	clusterTagValue = getEnv("OPERATIONS_CONSUL_CLUSTER_TAG_VALUE", "")
 	retryInterval = getEnv("AUTO_JOIN_RETRY_INTERVAL", "10")
@@ -50,12 +52,12 @@ func main() {
 		log.Fatalf("AUTO_JOIN_RETRY_COUNT is invalid: %s", err)
 	}
 
-	if clusterTagKey == "" || clusterTagValue == "" {
-		log.Println("OPERATIONS_CONSUL_CLUSTER_TAG_KEY and/or OPERATIONS_CONSUL_CLUSTER_TAG_VALUE environment vars were empty or not present, this agent is not configured to autojoin any other cluster")
+	if clusterRegion == "" || clusterTagKey == "" || clusterTagValue == "" {
+		log.Println("OPERATIONS_CONSUL_CLUSTER_REGION and/or OPERATIONS_CONSUL_CLUSTER_TAG_KEY and/or OPERATIONS_CONSUL_CLUSTER_TAG_VALUE environment vars were empty or not present, this agent is not configured to autojoin any other cluster")
 		os.Exit(0)
 	}
 
-	AWSession, err := session.NewSession()
+	AWSession, err := session.NewSession(&aws.Config{Region: aws.String(clusterRegion)})
 	if err != nil {
 		log.Println("Error creating session: ", err)
 	}
