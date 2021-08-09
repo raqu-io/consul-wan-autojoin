@@ -112,7 +112,7 @@ func main() {
 	// If alive. Join the cluster instances (if any)
 	for _, r := range result.Reservations {
 		for _, i := range r.Instances {
-			fmt.Println(fmt.Sprintf("Found instance with IP: %s. Joining through WAN", *i.PrivateIpAddress))
+			fmt.Println(fmt.Sprintf("Found instance with IP: %s. Joining through WAN", i.PrivateIpAddress))
 			err = client.Agent().Join(*i.PrivateIpAddress,true)
 			if err != nil {
 				panic(err)
