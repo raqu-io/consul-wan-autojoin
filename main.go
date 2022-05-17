@@ -72,19 +72,6 @@ func main() {
 			},
 		},
 	}
-	log.Printf("Looking for ec2 instances with tags %s:%s...\n", clusterTagKey, clusterTagValue)
-	result, err := svc.DescribeInstances(input)
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			default:
-				panic(aerr.Error())
-			}
-		} else {
-			panic(err.Error())
-		}
-	}
-
 	client, err := api.NewClient(api.DefaultConfig())
 	if err != nil {
 		panic(err)
@@ -103,19 +90,43 @@ func main() {
 				panic(err)
 			}
 		} else {
-			log.Println("Consul agent is healthy")
-			break
+			leader, err := client.Status().Leader()
+			if err != nil || leader == "" {
+				if i < retCount {
+					log.Printf("Consul agent does not seem healthy. Sleeping %ss...\n", retryInterval)
+					i++
+					time.Sleep(retryIntervalDuration)
+				} else {
+					panic(err)
+				}
+			} else {
+				log.Println("Consul agent is healthy")
+				break
+			}
 		}
 	}
 
-
+	log.Printf("Looking for ec2 instances with tags %s:%s...\n", clusterTagKey, clusterTagValue)
+	result, err := svc.DescribeInstances(input)
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			default:
+				panic(aerr.Error())
+			}
+		} else {
+			panic(err.Error())
+		}
+	}
 	// If alive. Join the cluster instances (if any)
 	for _, r := range result.Reservations {
 		for _, i := range r.Instances {
-			fmt.Println(fmt.Sprintf("Found instance with IP: %s. Joining through WAN", i.PrivateIpAddress))
-			err = client.Agent().Join(*i.PrivateIpAddress,true)
-			if err != nil {
-				panic(err)
+			if i != nil && i.PrivateIpAddress != nil {
+				fmt.Println(fmt.Sprintf("Found instance with IP: %s. Joining through WAN", i.PrivateIpAddress))
+				err = client.Agent().Join(*i.PrivateIpAddress,true)
+				if err != nil {
+					panic(err)
+				}
 			}
 		}
 	}
