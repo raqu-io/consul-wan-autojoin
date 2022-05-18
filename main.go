@@ -122,7 +122,7 @@ func main() {
 	for _, r := range result.Reservations {
 		for _, i := range r.Instances {
 			if i != nil && i.PrivateIpAddress != nil {
-				fmt.Println(fmt.Sprintf("Found instance with IP: %s. Joining through WAN", i.PrivateIpAddress))
+				fmt.Println(fmt.Sprintf("Found instance with IP: %s. Joining through WAN", *i.PrivateIpAddress))
 				err = client.Agent().Join(*i.PrivateIpAddress,true)
 				if err != nil {
 					panic(err)
