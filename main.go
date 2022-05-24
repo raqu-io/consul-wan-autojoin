@@ -5,7 +5,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -90,10 +89,8 @@ func main() {
 		log.Printf("Cannot read acl mgmt token from ssm at ssm://%s: %s", ssmACLTokenPath, err)
 	}
 
-	aclMgmtToken, err := base64.StdEncoding.DecodeString(*aclMgmtTokenData.Parameter.Value)
-
 	config := api.DefaultConfig()
-	config.Token = string(aclMgmtToken)
+	config.Token = *aclMgmtTokenData.Parameter.Value
 	client, err := api.NewClient(config)
 	if err != nil {
 		panic(err)
