@@ -5,11 +5,13 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/ssm"
 	"github.com/hashicorp/consul/api"
 	"log"
 	"os"
@@ -22,6 +24,7 @@ var (
 	clusterTagValue string
 	retryInterval string
 	retryCount string
+	ssmACLTokenPath string
 )
 
 
@@ -37,6 +40,7 @@ func main() {
 	clusterRegion = getEnv("OPERATIONS_CONSUL_CLUSTER_REGION", "")
 	clusterTagKey = getEnv("OPERATIONS_CONSUL_CLUSTER_TAG_KEY", "")
 	clusterTagValue = getEnv("OPERATIONS_CONSUL_CLUSTER_TAG_VALUE", "")
+	ssmACLTokenPath = getEnv("SSM_PATH_CONSUL_ACL_MGMT_TOKEN", "")
 	retryInterval = getEnv("AUTO_JOIN_RETRY_INTERVAL", "10")
 	retryCount = getEnv("AUTO_JOIN_RETRY_COUNT", "6")
 
@@ -55,13 +59,16 @@ func main() {
 	if clusterRegion == "" || clusterTagKey == "" || clusterTagValue == "" {
 		log.Println("OPERATIONS_CONSUL_CLUSTER_REGION and/or OPERATIONS_CONSUL_CLUSTER_TAG_KEY and/or OPERATIONS_CONSUL_CLUSTER_TAG_VALUE environment vars were empty or not present, this agent is not configured to autojoin any other cluster")
 		os.Exit(0)
+	} else if ssmACLTokenPath == "" {
+		log.Println("Error. SSM path to retrieve token not present")
+		os.Exit(1)
 	}
 
-	AWSession, err := session.NewSession(&aws.Config{Region: aws.String(clusterRegion)})
+	AWSSession, err := session.NewSession(&aws.Config{Region: aws.String(clusterRegion)})
 	if err != nil {
 		log.Println("Error creating session: ", err)
 	}
-	svc := ec2.New(AWSession)
+	svc := ec2.New(AWSSession)
 	input := &ec2.DescribeInstancesInput{
 		Filters: []*ec2.Filter{
 			{
@@ -72,11 +79,25 @@ func main() {
 			},
 		},
 	}
-	client, err := api.NewClient(api.DefaultConfig())
+
+	SSMService := ssm.New(AWSSession)
+	aclMgmtTokenGetRequest := &ssm.GetParameterInput {
+		Name: aws.String(ssmACLTokenPath),
+		WithDecryption: aws.Bool(true),
+	}
+	aclMgmtTokenData, err := SSMService.GetParameter(aclMgmtTokenGetRequest)
+	if err != nil {
+		log.Printf("Cannot read acl mgmt token from ssm at ssm://%s: %s", ssmACLTokenPath, err)
+	}
+
+	aclMgmtToken, err := base64.StdEncoding.DecodeString(*aclMgmtTokenData.Parameter.Value)
+
+	config := api.DefaultConfig()
+	config.Token = string(aclMgmtToken)
+	client, err := api.NewClient(config)
 	if err != nil {
 		panic(err)
 	}
-
 	// Check if consul agent is alive, wait for a bit if not
 	i = 1
 	for i < retCount {
