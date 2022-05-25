@@ -49,7 +49,6 @@ func main() {
 	clusterTagValue = getEnv("OPERATIONS_CONSUL_CLUSTER_TAG_VALUE", "")
 	operationsDC = getEnv("OPERATIONS_CONSUL_DC", "")
 	retryInterval = getEnv("AUTO_JOIN_RETRY_INTERVAL", "10")
-	retryCount = getEnv("AUTO_JOIN_RETRY_COUNT", "6")
 
 	i, err := strconv.Atoi(retryInterval)
 	if err != nil {
@@ -89,60 +88,39 @@ func main() {
 		panic(err)
 	}
 	// Check if consul agent is alive, wait for a bit if not
-	i = 1
-	for i < retCount {
-		_, err := client.Agent().Self()
+	for {
+		datacenters, err := client.Catalog().Datacenters()
 		if err != nil {
-			if i < retCount {
-				log.Printf("Consul agent does not seem healthy. Sleeping %ss...\n", retryInterval)
-				i++
+				log.Printf("Consul agent returning errors. Retrying in %ss: %s\n", retryInterval, err)
 				time.Sleep(retryIntervalDuration)
-			} else {
-				panic(err)
-			}
 		} else {
-			leader, err := client.Status().Leader()
-			if err != nil || leader == "" {
-				if i < retCount {
-					log.Printf("Consul agent does not seem healthy. Sleeping %ss...\n", retryInterval)
-					i++
-					time.Sleep(retryIntervalDuration)
-				} else {
-					panic(err)
-				}
+			if contains(datacenters, operationsDC) {
+				log.Printf("Cluster is already joined to %s. Nothing to do", operationsDC)
 			} else {
-				log.Println("Consul agent is healthy")
-				break
-			}
-		}
-	}
-	datacenters, err := client.Catalog().Datacenters()
-	if err != nil {
-		panic(err)
-	}
-	if contains(datacenters, operationsDC) {
-		log.Printf("Cluster is already joined to %s. Nothing to do", operationsDC)
-	} else {
-		log.Printf("Looking for ec2 instances with tags %s:%s...\n", clusterTagKey, clusterTagValue)
-		result, err := svc.DescribeInstances(input)
-		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				switch aerr.Code() {
-				default:
-					panic(aerr.Error())
+				log.Printf("Looking for ec2 instances with tags %s:%s...\n", clusterTagKey, clusterTagValue)
+				result, err := svc.DescribeInstances(input)
+				if err != nil {
+					if aerr, ok := err.(awserr.Error); ok {
+						switch aerr.Code() {
+						default:
+							panic(aerr.Error())
+						}
+					} else {
+						panic(err.Error())
+					}
 				}
-			} else {
-				panic(err.Error())
-			}
-		}
-		// If alive. Join the cluster instances (if any)
-		for _, r := range result.Reservations {
-			for _, i := range r.Instances {
-				if i != nil && i.PrivateIpAddress != nil {
-					fmt.Println(fmt.Sprintf("Found instance with IP: %s. Joining through WAN", *i.PrivateIpAddress))
-					err = client.Agent().Join(*i.PrivateIpAddress,true)
-					if err != nil {
-						panic(err)
+				// If alive. Join the cluster instances (if any)
+				for _, r := range result.Reservations {
+					for _, i := range r.Instances {
+						if i != nil && i.PrivateIpAddress != nil {
+							fmt.Println(fmt.Sprintf("Found instance with IP: %s. Joining through WAN", *i.PrivateIpAddress))
+							err = client.Agent().Join(*i.PrivateIpAddress,true)
+							if err != nil {
+								panic(err)
+							} else {
+								fmt.Println(fmt.Sprintf("Successfully joined %s", *i.PrivateIpAddress))
+							}
+						}
 					}
 				}
 			}
