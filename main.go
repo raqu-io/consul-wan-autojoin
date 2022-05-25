@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/aws/aws-sdk-go/service/ssm"
 	"github.com/hashicorp/consul/api"
 	"log"
 	"os"
@@ -21,9 +20,9 @@ var (
 	clusterRegion string
 	clusterTagKey string
 	clusterTagValue string
+	operationsDC string
 	retryInterval string
 	retryCount string
-	ssmACLTokenPath string
 )
 
 
@@ -34,12 +33,21 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
+func contains(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	log.Println("Starting consul-wan-autojoin service...")
 	clusterRegion = getEnv("OPERATIONS_CONSUL_CLUSTER_REGION", "")
 	clusterTagKey = getEnv("OPERATIONS_CONSUL_CLUSTER_TAG_KEY", "")
 	clusterTagValue = getEnv("OPERATIONS_CONSUL_CLUSTER_TAG_VALUE", "")
-	ssmACLTokenPath = getEnv("SSM_PATH_CONSUL_ACL_MGMT_TOKEN", "")
+	operationsDC = getEnv("OPERATIONS_CONSUL_DC", "")
 	retryInterval = getEnv("AUTO_JOIN_RETRY_INTERVAL", "10")
 	retryCount = getEnv("AUTO_JOIN_RETRY_COUNT", "6")
 
@@ -58,9 +66,6 @@ func main() {
 	if clusterRegion == "" || clusterTagKey == "" || clusterTagValue == "" {
 		log.Println("OPERATIONS_CONSUL_CLUSTER_REGION and/or OPERATIONS_CONSUL_CLUSTER_TAG_KEY and/or OPERATIONS_CONSUL_CLUSTER_TAG_VALUE environment vars were empty or not present, this agent is not configured to autojoin any other cluster")
 		os.Exit(0)
-	} else if ssmACLTokenPath == "" {
-		log.Println("Error. SSM path to retrieve token not present")
-		os.Exit(1)
 	}
 
 	AWSSession, err := session.NewSession(&aws.Config{Region: aws.String(clusterRegion)})
@@ -79,19 +84,7 @@ func main() {
 		},
 	}
 
-	SSMService := ssm.New(AWSSession)
-	aclMgmtTokenGetRequest := &ssm.GetParameterInput {
-		Name: aws.String(ssmACLTokenPath),
-		WithDecryption: aws.Bool(true),
-	}
-	aclMgmtTokenData, err := SSMService.GetParameter(aclMgmtTokenGetRequest)
-	if err != nil {
-		log.Printf("Cannot read acl mgmt token from ssm at ssm://%s: %s", ssmACLTokenPath, err)
-	}
-
-	config := api.DefaultConfig()
-	config.Token = *aclMgmtTokenData.Parameter.Value
-	client, err := api.NewClient(config)
+	client, err := api.NewClient(api.DefaultConfig())
 	if err != nil {
 		panic(err)
 	}
@@ -123,27 +116,34 @@ func main() {
 			}
 		}
 	}
-
-	log.Printf("Looking for ec2 instances with tags %s:%s...\n", clusterTagKey, clusterTagValue)
-	result, err := svc.DescribeInstances(input)
+	datacenters, err := client.Catalog().Datacenters()
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			default:
-				panic(aerr.Error())
-			}
-		} else {
-			panic(err.Error())
-		}
+		panic(err)
 	}
-	// If alive. Join the cluster instances (if any)
-	for _, r := range result.Reservations {
-		for _, i := range r.Instances {
-			if i != nil && i.PrivateIpAddress != nil {
-				fmt.Println(fmt.Sprintf("Found instance with IP: %s. Joining through WAN", *i.PrivateIpAddress))
-				err = client.Agent().Join(*i.PrivateIpAddress,true)
-				if err != nil {
-					panic(err)
+	if contains(datacenters, operationsDC) {
+		log.Printf("Cluster is already joined to %s. Nothing to do", operationsDC)
+	} else {
+		log.Printf("Looking for ec2 instances with tags %s:%s...\n", clusterTagKey, clusterTagValue)
+		result, err := svc.DescribeInstances(input)
+		if err != nil {
+			if aerr, ok := err.(awserr.Error); ok {
+				switch aerr.Code() {
+				default:
+					panic(aerr.Error())
+				}
+			} else {
+				panic(err.Error())
+			}
+		}
+		// If alive. Join the cluster instances (if any)
+		for _, r := range result.Reservations {
+			for _, i := range r.Instances {
+				if i != nil && i.PrivateIpAddress != nil {
+					fmt.Println(fmt.Sprintf("Found instance with IP: %s. Joining through WAN", *i.PrivateIpAddress))
+					err = client.Agent().Join(*i.PrivateIpAddress,true)
+					if err != nil {
+						panic(err)
+					}
 				}
 			}
 		}
