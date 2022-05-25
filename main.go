@@ -94,6 +94,7 @@ func main() {
 		} else {
 			if contains(datacenters, operationsDC) {
 				log.Printf("Cluster is already joined to %s. Nothing to do", operationsDC)
+				os.Exit(0)
 			} else {
 				log.Printf("Datacenter %s not found on catalog.datacenters", operationsDC)
 				log.Printf("Looking for ec2 instances with tags %s:%s...\n", clusterTagKey, clusterTagValue)
