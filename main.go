@@ -22,7 +22,6 @@ var (
 	clusterTagValue string
 	operationsDC string
 	retryInterval string
-	retryCount string
 )
 
 
@@ -47,7 +46,7 @@ func main() {
 	clusterRegion = getEnv("OPERATIONS_CONSUL_CLUSTER_REGION", "")
 	clusterTagKey = getEnv("OPERATIONS_CONSUL_CLUSTER_TAG_KEY", "")
 	clusterTagValue = getEnv("OPERATIONS_CONSUL_CLUSTER_TAG_VALUE", "")
-	operationsDC = getEnv("OPERATIONS_CONSUL_DC", "")
+	operationsDC = getEnv("CONSUL_OPERATIONS_DC", "")
 	retryInterval = getEnv("AUTO_JOIN_RETRY_INTERVAL", "10")
 
 	i, err := strconv.Atoi(retryInterval)
@@ -56,7 +55,7 @@ func main() {
 	}
 
 	retryIntervalDuration := time.Duration(i) * time.Second
-	
+
 	if err != nil {
 		log.Fatalf("AUTO_JOIN_RETRY_COUNT is invalid: %s", err)
 	}
@@ -96,6 +95,7 @@ func main() {
 			if contains(datacenters, operationsDC) {
 				log.Printf("Cluster is already joined to %s. Nothing to do", operationsDC)
 			} else {
+				log.Printf("Datacenter %s not found on catalog.datacenters", operationsDC)
 				log.Printf("Looking for ec2 instances with tags %s:%s...\n", clusterTagKey, clusterTagValue)
 				result, err := svc.DescribeInstances(input)
 				if err != nil {
