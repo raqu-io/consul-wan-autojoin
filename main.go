@@ -56,8 +56,7 @@ func main() {
 	}
 
 	retryIntervalDuration := time.Duration(i) * time.Second
-
-	retCount, err := strconv.Atoi(retryCount)
+	
 	if err != nil {
 		log.Fatalf("AUTO_JOIN_RETRY_COUNT is invalid: %s", err)
 	}
