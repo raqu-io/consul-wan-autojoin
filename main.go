@@ -17,11 +17,11 @@ import (
 	"time"
 )
 var (
-	clusterRegion string
-	clusterTagKey string
+	clusterRegion   string
+	clusterTagKey   string
 	clusterTagValue string
-	operationsDC string
-	retryInterval string
+	primaryDC       string
+	retryInterval   string
 )
 
 
@@ -43,10 +43,10 @@ func contains(s []string, str string) bool {
 
 func main() {
 	log.Println("Starting consul-wan-autojoin service...")
-	clusterRegion = getEnv("OPERATIONS_CONSUL_CLUSTER_REGION", "")
-	clusterTagKey = getEnv("OPERATIONS_CONSUL_CLUSTER_TAG_KEY", "")
-	clusterTagValue = getEnv("OPERATIONS_CONSUL_CLUSTER_TAG_VALUE", "")
-	operationsDC = getEnv("CONSUL_OPERATIONS_DC", "")
+	clusterRegion = getEnv("PRIMARY_CONSUL_CLUSTER_REGION", "")
+	clusterTagKey = getEnv("PRIMARY_CONSUL_CLUSTER_TAG_KEY", "")
+	clusterTagValue = getEnv("PRIMARY_CONSUL_CLUSTER_TAG_VALUE", "")
+	primaryDC = getEnv("CONSUL_PRIMARY_DC", "")
 	retryInterval = getEnv("AUTO_JOIN_RETRY_INTERVAL", "10")
 
 	i, err := strconv.Atoi(retryInterval)
@@ -61,7 +61,7 @@ func main() {
 	}
 
 	if clusterRegion == "" || clusterTagKey == "" || clusterTagValue == "" {
-		log.Println("OPERATIONS_CONSUL_CLUSTER_REGION and/or OPERATIONS_CONSUL_CLUSTER_TAG_KEY and/or OPERATIONS_CONSUL_CLUSTER_TAG_VALUE environment vars were empty or not present, this agent is not configured to autojoin any other cluster")
+		log.Println("PRIMARY_CONSUL_CLUSTER_REGION and/or PRIMARY_CONSUL_CLUSTER_TAG_KEY and/or PRIMARY_CONSUL_CLUSTER_TAG_VALUE environment vars were empty or not present, this agent is not configured to autojoin any other cluster")
 		os.Exit(0)
 	}
 
@@ -92,11 +92,11 @@ func main() {
 				log.Printf("Consul agent returning errors. Retrying in %ss: %s\n", retryInterval, err)
 				time.Sleep(retryIntervalDuration)
 		} else {
-			if contains(datacenters, operationsDC) {
-				log.Printf("Cluster is already joined to %s. Nothing to do", operationsDC)
+			if contains(datacenters, primaryDC) {
+				log.Printf("Cluster is already joined to %s. Nothing to do", primaryDC)
 				os.Exit(0)
 			} else {
-				log.Printf("Datacenter %s not found on catalog.datacenters", operationsDC)
+				log.Printf("Datacenter %s not found on catalog.datacenters", primaryDC)
 				log.Printf("Looking for ec2 instances with tags %s:%s...\n", clusterTagKey, clusterTagValue)
 				result, err := svc.DescribeInstances(input)
 				if err != nil {
